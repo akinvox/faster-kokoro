@@ -1,0 +1,11 @@
+AkinVox Faster Kokoro
+Copyright 2026 AkinVox
+
+This distribution replaces the waveform decoder of Kokoro-82M by hexgrad
+(Apache-2.0) with a mel head trained by AkinVox, followed by the unmodified
+public Vocos vocoder by Charactr (MIT). The text frontend, duration, pitch and
+energy predictors and the voice packs are those of Kokoro-82M.
+
+Kokoro-82M and Vocos weights are fetched separately from their pinned upstream
+repositories. Third-party software and weights retain their licenses; see
+THIRD_PARTY_LICENSES.md and licenses/.

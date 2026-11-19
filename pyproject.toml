@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "akinvox-faster-kokoro"
+version = "1.0.0"
+description = "Kokoro-82M with a faster waveform decoder: a mel head plus Vocos"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "licenses/*"]
+authors = [{name = "AkinVox"}]
+dependencies = [
+  "torch", "kokoro==0.9.4", "misaki[en]==0.9.4", "vocos",
+  "huggingface-hub", "safetensors", "soundfile", "numpy"
+]
+
+
+[project.urls]
+Homepage = "https://akinvox.com"
+Repository = "https://github.com/akinvox/faster-kokoro"
+Weights = "https://huggingface.co/AKinvox/faster-kokoro-v1"
+
+[tool.setuptools.packages.find]
+include = ["faster_kokoro*"]
