@@ -1,6 +1,7 @@
 """Pinned upstream sources and audio-grid constants."""
 
 HEAD_REPO = "AKinvox/faster-kokoro-v1"
+HEAD_REVISION = "db715c1d59f3e54b06ed1fd413371442de6b1f40"
 HEAD_FILE = "faster_kokoro_head.safetensors"
 CONFIG_FILE = "config.json"
 

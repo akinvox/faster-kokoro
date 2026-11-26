@@ -19,17 +19,18 @@ class FasterKokoro:
             of GPU memory) for several times faster synthesis. Output is unchanged.
         repo_id: Hugging Face repository holding the mel head.
         head_path, config_path: use local head files instead of downloading them.
+        revision: revision of `repo_id` to download. Defaults to the pinned release revision.
     """
 
     sample_rate = SAMPLE_RATE
 
     def __init__(self, device: Optional[str] = None, cuda_graphs: bool = False, repo_id: str = HEAD_REPO,
-                 head_path=None, config_path=None):
+                 head_path=None, config_path=None, revision: Optional[str] = None):
         device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         if cuda_graphs and not device.startswith("cuda"):
             raise ValueError("cuda_graphs requires a CUDA device")
         self.device = device
-        self.model = load_model(device, repo_id, head_path, config_path)
+        self.model = load_model(device, repo_id, head_path, config_path, revision)
         self._runtime = BucketGraphRuntime(BucketedModel(self.model).to(device), device) if cuda_graphs else None
         self._runtime_ready = False
         self._pipelines = {}
