@@ -1,4 +1,5 @@
 """Public text-to-speech interface."""
+import warnings
 from pathlib import Path
 from typing import Iterator, Optional, Union
 
@@ -32,6 +33,7 @@ class FasterKokoro:
         self.model = load_model(device, repo_id, head_path, config_path)
         self._runtime = BucketGraphRuntime(BucketedModel(self.model).to(device), device) if cuda_graphs else None
         self._runtime_ready = False
+        self._overflow_warned = False
         self._pipelines = {}
 
     def _pipeline(self, lang_code: str):
@@ -53,8 +55,13 @@ class FasterKokoro:
                     self._runtime_ready = True
                 try:
                     return self._runtime.infer(ids, ref, speed).float().cpu()
-                except BucketOverflow:  # longer than the largest graph bucket: normal path
-                    pass
+                except BucketOverflow as overflow:  # longer than the largest graph bucket: normal path
+                    if not self._overflow_warned:
+                        self._overflow_warned = True
+                        warnings.warn(
+                            f"A chunk is too long for the CUDA graphs ({overflow}); it and any other such "
+                            "chunk use the slower normal path. This usually means a low `speed`.",
+                            RuntimeWarning, stacklevel=2)
             return self.model.forward_with_tokens(ids, ref, speed)[0].squeeze().float().cpu()
 
     def warmup(self, voice: str = "af_heart") -> None:
