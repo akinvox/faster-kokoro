@@ -2,7 +2,8 @@
 
 Every stage runs on inputs padded to a fixed set of sizes ("buckets") with exact masking.
 Each bucket is recorded once as a CUDA graph (about 30 s, about 330 MB of GPU memory) and
-then serves any sentence that fits. One request at a time per instance.
+then serves any sentence that fits; the few largest buckets are recorded on first use.
+One request at a time per instance.
 """
 import torch
 import torch.nn as nn
@@ -13,6 +14,9 @@ from .features import decode_mel, head_inputs
 
 TOKEN_BUCKETS = (16, 24, 32, 48, 64, 80, 96, 128, 160, 192, 256, 320, 384, 448, 512)
 FRAME_BUCKETS = tuple(sorted({int(round(16 * 1.2**k)) for k in range(26)}))  # 16 ... ~1520 frames (~38 s)
+# Longer chunks (a low `speed` stretches a full 510-phoneme chunk well past 38 s). These are large, so each is
+# recorded the first time a request needs it instead of up front: ~1830 ... ~3170 frames (~79 s).
+LAZY_FRAME_BUCKETS = tuple(int(round(16 * 1.2**k)) for k in range(26, 30))
 
 
 class BucketOverflow(ValueError):
@@ -187,15 +191,20 @@ class BucketGraphRuntime:
         for size in TOKEN_BUCKETS:
             ids = torch.zeros(1, size, dtype=torch.long, device=dev)
             self.prefix[size] = _Capture(self.b.prefix, (ids, torch.tensor(min(size, 8), device=dev), ref))
+        for fb in FRAME_BUCKETS:
+            self._capture_frames(fb, style, s_dec)
+        torch.cuda.synchronize()
+
+    def _capture_frames(self, fb: int, style, s_dec):
+        """Record the pitch/energy and mel-head graphs for one frame bucket."""
+        dev = self.dev
         predictor_encoder = self.b.m.predictor.text_encoder
         channels = predictor_encoder.d_model + predictor_encoder.sty_dim
-        for fb in FRAME_BUCKETS:
-            frames = torch.tensor(min(fb, 12), device=dev)
-            self.controls[fb] = _Capture(self.b.controls, (torch.zeros(1, channels, fb, device=dev), frames, style))
-            self.head[fb] = _Capture(self.b.head, (
-                torch.zeros(1, 512, fb, device=dev), torch.zeros(1, 2 * fb, device=dev),
-                torch.zeros(1, 2 * fb, device=dev), frames, s_dec))
-        torch.cuda.synchronize()
+        frames = torch.tensor(min(fb, 12), device=dev)
+        self.controls[fb] = _Capture(self.b.controls, (torch.zeros(1, channels, fb, device=dev), frames, style))
+        self.head[fb] = _Capture(self.b.head, (
+            torch.zeros(1, 512, fb, device=dev), torch.zeros(1, 2 * fb, device=dev),
+            torch.zeros(1, 2 * fb, device=dev), frames, s_dec))
 
     @torch.no_grad()
     def infer(self, ids, ref, speed: float = 1.0):
@@ -207,7 +216,9 @@ class BucketGraphRuntime:
         dur = (raw[0, :length] / speed).round().clamp(min=1).long()
         frames = int(dur.sum())  # the one unavoidable sync
         idx = torch.repeat_interleave(torch.arange(length, device=dev), dur, output_size=frames)
-        fb = _pick(frames, FRAME_BUCKETS)
+        fb = _pick(frames, FRAME_BUCKETS + LAZY_FRAME_BUCKETS)
+        if fb not in self.controls:  # a lazy bucket, first use
+            self._capture_frames(fb, ref[:, 128:], ref[:, :128])
         idx = F.pad(idx, (0, fb - frames))
         en = d.transpose(1, 2).index_select(2, idx)
         asr = text.index_select(2, idx)
